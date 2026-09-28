@@ -1,0 +1,4 @@
+resp-server
+*.o
+*.dSYM/
+docs
