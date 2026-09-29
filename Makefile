@@ -6,6 +6,7 @@ SRC = src/main.c
 BIN = resp-server
 
 TEST_SDS_BIN = test_sds
+TEST_RESP_BIN = test_resp
 
 .PHONY: all run clean test
 
@@ -17,11 +18,15 @@ $(BIN): $(SRC)
 run: all
 	./$(BIN)
 
-test: $(TEST_SDS_BIN)
+test: $(TEST_SDS_BIN) $(TEST_RESP_BIN)
 	./$(TEST_SDS_BIN)
+	./$(TEST_RESP_BIN)
 
 $(TEST_SDS_BIN): tests/test_sds.c src/sds.c include/sds.h
 	$(CC) $(CFLAGS) tests/test_sds.c src/sds.c -o $(TEST_SDS_BIN) $(LDFLAGS)
 
+$(TEST_RESP_BIN): tests/test_resp.c src/resp.c include/resp.h
+	$(CC) $(CFLAGS) tests/test_resp.c src/resp.c -o $(TEST_RESP_BIN) $(LDFLAGS)
+
 clean:
-	rm -f $(BIN) $(TEST_SDS_BIN)
+	rm -f $(BIN) $(TEST_SDS_BIN) $(TEST_RESP_BIN)

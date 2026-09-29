@@ -1,5 +1,6 @@
 resp-server
 test_sds
+test_resp
 *.o
 *.dSYM/
 docs
