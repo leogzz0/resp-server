@@ -31,46 +31,56 @@ static long parse_int(const char *buf, size_t start, size_t end) {
 long resp_parse_command(const char *buf, size_t len, resp_command_t *cmd) {
     size_t pos = 0;
 
-    if (len == 0 || buf[pos] != '*') {
-        return -1; // every command starts with an array marker
+    if (len == 0) {
+        return RESP_INCOMPLETE; // nothing received yet
+    }
+    if (buf[pos] != '*') {
+        return RESP_ERROR; // every command starts with an array marker
     }
     pos++;
 
     long line_end = find_crlf(buf, len, pos);
     if (line_end < 0) {
-        return -1;
+        return RESP_INCOMPLETE; // array header not fully received
     }
     long argc = parse_int(buf, pos, (size_t)line_end);
     if (argc <= 0) {
-        return -1;
+        return RESP_ERROR;
     }
     pos = (size_t)line_end + 2; // skip the \r\n
 
     char **argv = malloc(sizeof(char *) * (size_t)argc);
     size_t *argvlen = malloc(sizeof(size_t) * (size_t)argc);
     size_t filled = 0; // how many argv slots are actually allocated so far
+    long ret = RESP_ERROR;
 
     for (long i = 0; i < argc; i++) {
-        if (pos >= len || buf[pos] != '$') {
-            goto fail; // expected a bulk string marker
+        if (pos >= len) {
+            ret = RESP_INCOMPLETE;
+            goto cleanup;
+        }
+        if (buf[pos] != '$') {
+            goto cleanup; // expected a bulk string marker
         }
         pos++;
 
         long bulk_end = find_crlf(buf, len, pos);
         if (bulk_end < 0) {
-            goto fail;
+            ret = RESP_INCOMPLETE;
+            goto cleanup;
         }
         long bulk_len = parse_int(buf, pos, (size_t)bulk_end);
         if (bulk_len < 0) {
-            goto fail;
+            goto cleanup;
         }
         pos = (size_t)bulk_end + 2; // skip the \r\n after the length
 
         if (pos + (size_t)bulk_len + 2 > len) {
-            goto fail; // not enough bytes left for the payload plus its trailing crlf
+            ret = RESP_INCOMPLETE; // payload or its trailing crlf still on the way
+            goto cleanup;
         }
         if (buf[pos + (size_t)bulk_len] != '\r' || buf[pos + (size_t)bulk_len + 1] != '\n') {
-            goto fail;
+            goto cleanup;
         }
 
         argv[i] = malloc((size_t)bulk_len + 1);
@@ -87,13 +97,13 @@ long resp_parse_command(const char *buf, size_t len, resp_command_t *cmd) {
     cmd->argc = (size_t)argc;
     return (long)pos;
 
-fail:
+cleanup:
     for (size_t i = 0; i < filled; i++) {
         free(argv[i]); // only free the slots we actually allocated
     }
     free(argv);
     free(argvlen);
-    return -1;
+    return ret;
 }
 
 void resp_command_free(resp_command_t *cmd) {
