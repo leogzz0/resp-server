@@ -3,6 +3,45 @@
 #include <string.h>
 
 #include "resp.h"
+#include "sds.h"
+
+// feeds the stream in pieces of 'chunk' bytes and checks every command comes out in order
+static void check_stream(const char *stream, size_t chunk) {
+    const char *names[] = {"GET", "PING", "SET"};
+    const size_t argcs[] = {2, 1, 3};
+    size_t stream_len = strlen(stream);
+
+    sds_t buf;
+    sds_init(&buf);
+    size_t start = 0; // where the next unparsed command begins
+    size_t done = 0;  // how many commands were parsed so far
+
+    for (size_t fed = 0; fed < stream_len; fed += chunk) {
+        size_t take = stream_len - fed < chunk ? stream_len - fed : chunk;
+        sds_append(&buf, stream + fed, take);
+
+        // parse as many complete commands as the buffer holds right now
+        for (;;) {
+            resp_command_t cmd;
+            long n = resp_parse_command(buf.data + start, buf.len - start, &cmd);
+            if (n == RESP_INCOMPLETE) {
+                break; // wait for the next piece
+            }
+            assert(n > 0); // a valid stream must never produce an error
+            assert(done < 3);
+            assert(cmd.argc == argcs[done]);
+            assert(cmd.argvlen[0] == strlen(names[done]));
+            assert(memcmp(cmd.argv[0], names[done], strlen(names[done])) == 0);
+            resp_command_free(&cmd);
+            start += (size_t)n;
+            done++;
+        }
+    }
+
+    assert(done == 3); // all three commands came out
+    assert(start == stream_len); // nothing left over
+    sds_free(&buf);
+}
 
 int main(void) {
     const char *input = "*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n";
@@ -60,6 +99,14 @@ int main(void) {
     assert(resp_parse_command("+OK\r\n", 5, &bad) == RESP_ERROR);
     assert(resp_parse_command("*2\r\n:3\r\n", 8, &bad) == RESP_ERROR);
     assert(resp_parse_command("*x\r\n", 4, &bad) == RESP_ERROR);
+
+    // same stream fed byte by byte, in 3-byte pieces, and all at once
+    const char *stream = "*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n"
+                         "*1\r\n$4\r\nPING\r\n"
+                         "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nhello\r\n";
+    check_stream(stream, 1);
+    check_stream(stream, 3);
+    check_stream(stream, strlen(stream));
 
     printf("test_resp: all assertions passed\n");
     return 0;
