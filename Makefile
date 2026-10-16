@@ -2,7 +2,7 @@ CC = cc
 CFLAGS = -Wall -Wextra -std=c11 -g -Iinclude -fsanitize=address,undefined
 LDFLAGS = -fsanitize=address,undefined
 
-SRC = src/main.c
+SRC = src/main.c src/resp.c src/sds.c
 BIN = resp-server
 
 TEST_SDS_BIN = test_sds

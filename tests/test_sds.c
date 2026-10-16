@@ -27,6 +27,13 @@ int main(void) {
         assert(s.data[i] == 'x'); // every appended byte landed correctly
     }
 
+    // consume drops bytes from the front and keeps the rest in order
+    sds_consume(&s, 6);
+    assert(s.len == 1005);
+    assert(memcmp(s.data, "world", 5) == 0);
+    sds_consume(&s, 5000); // more than we have just empties it
+    assert(s.len == 0);
+
     sds_free(&s);
     assert(s.data == NULL);
     assert(s.len == 0);

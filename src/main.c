@@ -4,7 +4,75 @@
 #include <netinet/in.h>
 #include <unistd.h>
 
+#include "resp.h"
+#include "sds.h"
+
 #define PORT 6379
+
+// writes all of data to fd, retrying on partial writes, returns -1 on error
+static int write_all(int fd, const char *data, size_t len) {
+    size_t sent = 0;
+    while (sent < len) {
+        ssize_t n = write(fd, data + sent, len - sent);
+        if (n < 0) {
+            return -1;
+        }
+        sent += (size_t)n;
+    }
+    return 0;
+}
+
+// serves one client until it disconnects or sends garbage
+static void handle_client(int client_fd) {
+    sds_t in; // bytes received but not parsed yet
+    sds_init(&in);
+    char chunk[1024];
+    ssize_t n;
+
+    while ((n = read(client_fd, chunk, sizeof(chunk))) > 0) {
+        sds_append(&in, chunk, (size_t)n);
+
+        // parse every complete command currently in the buffer (pipelining)
+        for (;;) {
+            resp_command_t cmd;
+            long used = resp_parse_command(in.data, in.len, &cmd);
+            if (used == RESP_INCOMPLETE) {
+                break; // wait for more bytes
+            }
+
+            sds_t out; // reply for this command
+            sds_init(&out);
+
+            if (used == RESP_ERROR) {
+                resp_add_error(&out, "ERR protocol error");
+                write_all(client_fd, out.data, out.len);
+                sds_free(&out);
+                sds_free(&in);
+                return; // we can't resync after bad input, drop the client
+            }
+
+            // echo the command back as an array of bulk strings
+            resp_add_array_header(&out, cmd.argc);
+            for (size_t i = 0; i < cmd.argc; i++) {
+                resp_add_bulk(&out, cmd.argv[i], cmd.argvlen[i]);
+            }
+            int rc = write_all(client_fd, out.data, out.len);
+
+            sds_free(&out);
+            resp_command_free(&cmd);
+            sds_consume(&in, (size_t)used); // this command is done, drop it
+            if (rc < 0) {
+                sds_free(&in);
+                return; // client went away mid-write
+            }
+        }
+    }
+
+    if (n < 0) {
+        perror("read");
+    }
+    sds_free(&in);
+}
 
 int main(void) {
     // create a tcp socket
@@ -52,17 +120,7 @@ int main(void) {
 
         printf("resp-server: client connected (fd=%d)\n", client_fd);
 
-        char buf[1024];
-        ssize_t n;
-        // read whatever the client sends and reply pong every time
-        while ((n = read(client_fd, buf, sizeof(buf))) > 0) {
-            const char *pong = "+PONG\r\n";
-            write(client_fd, pong, strlen(pong));
-        }
-
-        if (n < 0) {
-            perror("read");
-        }
+        handle_client(client_fd);
 
         printf("resp-server: client disconnected\n");
 

@@ -34,3 +34,12 @@ void sds_append(sds_t *s, const char *data, size_t len) {
     memcpy(s->data + s->len, data, len); // copy the new bytes in
     s->len += len;
 }
+
+void sds_consume(sds_t *s, size_t n) {
+    if (n >= s->len) {
+        s->len = 0; // dropping everything
+        return;
+    }
+    memmove(s->data, s->data + n, s->len - n); // shift the leftover bytes to the front
+    s->len -= n;
+}
