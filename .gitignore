@@ -1,6 +1,7 @@
 resp-server
 test_sds
 test_resp
+test_ht
 *.o
 *.dSYM/
 docs
