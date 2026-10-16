@@ -1,5 +1,6 @@
 #include "resp.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -115,4 +116,41 @@ void resp_command_free(resp_command_t *cmd) {
     cmd->argv = NULL;
     cmd->argvlen = NULL;
     cmd->argc = 0;
+}
+
+void resp_add_simple(sds_t *out, const char *s) {
+    sds_append(out, "+", 1);
+    sds_append(out, s, strlen(s));
+    sds_append(out, "\r\n", 2);
+}
+
+void resp_add_error(sds_t *out, const char *msg) {
+    sds_append(out, "-", 1);
+    sds_append(out, msg, strlen(msg));
+    sds_append(out, "\r\n", 2);
+}
+
+// writes a prefix char followed by a number and \r\n, shared by :, $ and *
+static void add_prefixed_number(sds_t *out, char prefix, long long n) {
+    char tmp[32];
+    int len = snprintf(tmp, sizeof(tmp), "%c%lld\r\n", prefix, n);
+    sds_append(out, tmp, (size_t)len);
+}
+
+void resp_add_integer(sds_t *out, long long n) {
+    add_prefixed_number(out, ':', n);
+}
+
+void resp_add_bulk(sds_t *out, const char *data, size_t len) {
+    add_prefixed_number(out, '$', (long long)len); // length header
+    sds_append(out, data, len); // payload, may contain any bytes
+    sds_append(out, "\r\n", 2);
+}
+
+void resp_add_nil(sds_t *out) {
+    sds_append(out, "$-1\r\n", 5);
+}
+
+void resp_add_array_header(sds_t *out, size_t count) {
+    add_prefixed_number(out, '*', (long long)count);
 }

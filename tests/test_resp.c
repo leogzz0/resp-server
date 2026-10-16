@@ -43,7 +43,59 @@ static void check_stream(const char *stream, size_t chunk) {
     sds_free(&buf);
 }
 
+// checks that out holds exactly the expected bytes, then resets it
+static void expect_and_reset(sds_t *out, const char *expected) {
+    assert(out->len == strlen(expected));
+    assert(memcmp(out->data, expected, out->len) == 0);
+    sds_free(out);
+    sds_init(out);
+}
+
+static void check_replies(void) {
+    sds_t out;
+    sds_init(&out);
+
+    resp_add_simple(&out, "OK");
+    expect_and_reset(&out, "+OK\r\n");
+
+    resp_add_error(&out, "ERR unknown command");
+    expect_and_reset(&out, "-ERR unknown command\r\n");
+
+    resp_add_integer(&out, 1);
+    expect_and_reset(&out, ":1\r\n");
+    resp_add_integer(&out, -42);
+    expect_and_reset(&out, ":-42\r\n");
+
+    resp_add_bulk(&out, "foo", 3);
+    expect_and_reset(&out, "$3\r\nfoo\r\n");
+    resp_add_bulk(&out, "", 0); // empty string is not nil
+    expect_and_reset(&out, "$0\r\n\r\n");
+
+    resp_add_nil(&out);
+    expect_and_reset(&out, "$-1\r\n");
+
+    // array of two bulk strings, built element by element
+    resp_add_array_header(&out, 2);
+    resp_add_bulk(&out, "a", 1);
+    resp_add_bulk(&out, "bc", 2);
+    expect_and_reset(&out, "*2\r\n$1\r\na\r\n$2\r\nbc\r\n");
+
+    resp_add_array_header(&out, 0); // empty array
+    expect_and_reset(&out, "*0\r\n");
+
+    // a bulk string with binary bytes inside keeps its length
+    resp_add_bulk(&out, "a\0b", 3);
+    assert(out.len == 9); // $3\r\n (4) + a\0b (3) + \r\n (2)
+    assert(memcmp(out.data, "$3\r\na\0b\r\n", 9) == 0);
+    sds_free(&out);
+    sds_init(&out);
+
+    sds_free(&out);
+}
+
 int main(void) {
+    check_replies();
+
     const char *input = "*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n";
     size_t input_len = strlen(input);
 
