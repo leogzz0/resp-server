@@ -126,7 +126,10 @@ void resp_add_simple(sds_t *out, const char *s) {
 
 void resp_add_error(sds_t *out, const char *msg) {
     sds_append(out, "-", 1);
-    sds_append(out, msg, strlen(msg));
+    for (const char *p = msg; *p != '\0'; p++) {
+        char c = (*p == '\r' || *p == '\n') ? ' ' : *p; // a newline would end the reply early
+        sds_append(out, &c, 1);
+    }
     sds_append(out, "\r\n", 2);
 }
 

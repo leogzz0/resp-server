@@ -17,6 +17,10 @@ void sds_free(sds_t *s) {
 }
 
 void sds_append(sds_t *s, const char *data, size_t len) {
+    if (len == 0) {
+        return; // nothing to add, and s->data may still be NULL
+    }
+
     // grow the buffer if there isn't enough room left
     if (s->len + len > s->cap) {
         size_t new_cap = s->cap == 0 ? 16 : s->cap * 2; // start small, then double

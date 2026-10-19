@@ -4,8 +4,10 @@
 #include <netinet/in.h>
 #include <unistd.h>
 
+#include "cmd.h"
 #include "resp.h"
 #include "sds.h"
+#include "server.h"
 
 #define PORT 6379
 
@@ -23,7 +25,7 @@ static int write_all(int fd, const char *data, size_t len) {
 }
 
 // serves one client until it disconnects or sends garbage
-static void handle_client(int client_fd) {
+static void handle_client(server_t *srv, int client_fd) {
     sds_t in; // bytes received but not parsed yet
     sds_init(&in);
     char chunk[1024];
@@ -51,11 +53,7 @@ static void handle_client(int client_fd) {
                 return; // we can't resync after bad input, drop the client
             }
 
-            // echo the command back as an array of bulk strings
-            resp_add_array_header(&out, cmd.argc);
-            for (size_t i = 0; i < cmd.argc; i++) {
-                resp_add_bulk(&out, cmd.argv[i], cmd.argvlen[i]);
-            }
+            cmd_execute(srv, &cmd, &out); // run the command, reply lands in out
             int rc = write_all(client_fd, out.data, out.len);
 
             sds_free(&out);
@@ -75,6 +73,9 @@ static void handle_client(int client_fd) {
 }
 
 int main(void) {
+    server_t srv; // the database lives here and outlives every client
+    server_init(&srv);
+
     // create a tcp socket
     int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_fd < 0) {
@@ -120,7 +121,7 @@ int main(void) {
 
         printf("resp-server: client connected (fd=%d)\n", client_fd);
 
-        handle_client(client_fd);
+        handle_client(&srv, client_fd);
 
         printf("resp-server: client disconnected\n");
 

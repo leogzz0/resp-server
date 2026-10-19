@@ -61,6 +61,9 @@ static void check_replies(void) {
     resp_add_error(&out, "ERR unknown command");
     expect_and_reset(&out, "-ERR unknown command\r\n");
 
+    resp_add_error(&out, "ERR bad\r\n+OK"); // newlines in the message must not split the reply
+    expect_and_reset(&out, "-ERR bad  +OK\r\n");
+
     resp_add_integer(&out, 1);
     expect_and_reset(&out, ":1\r\n");
     resp_add_integer(&out, -42);

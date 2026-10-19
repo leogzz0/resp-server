@@ -9,6 +9,10 @@ int main(void) {
     sds_init(&s);
     assert(s.len == 0);
 
+    sds_append(&s, NULL, 0); // appending nothing is a no-op, even on an unallocated buffer
+    assert(s.len == 0);
+    assert(s.data == NULL);
+
     sds_append(&s, "hello", 5);
     assert(s.len == 5);
     assert(memcmp(s.data, "hello", 5) == 0);
